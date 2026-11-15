@@ -74,7 +74,13 @@ jobs:
           test -n "$APP" || { echo '找不到 .app'; exit 1; }
           xcrun simctl install "$UDID" "$APP"
           echo '=== launch ==='
-          timeout 60 xcrun simctl launch --console-pty "$UDID" io.nekohasekai.sfi > launch.log 2>&1 || echo "launch exit=$?"
+          # macOS runner 没有 coreutils 的 timeout，用后台 + 定时 kill
+          xcrun simctl launch --console-pty "$UDID" io.nekohasekai.sfi > launch.log 2>&1 &
+          LPID=$!
+          sleep 45
+          kill $LPID 2>/dev/null || true
+          wait $LPID 2>/dev/null || true
+          echo "launch.log 大小: $(wc -c < launch.log) 字节"
           echo '=== 前 200 行输出 ==='
           head -200 launch.log
           echo '=== 含 fatal/panic 的行 ==='
