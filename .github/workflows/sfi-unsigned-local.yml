@@ -133,7 +133,10 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
-            ENABLE_BITCODE=NO
+            ENABLE_BITCODE=NO \
+            STRIP_SWIFT_SYMBOLS=NO \
+            STRIP_INSTALLED_PRODUCT=NO \
+            COPY_PHASE_STRIP=NO
           test -d "build/SFI.xcarchive/Products/Applications"
           find "build/SFI.xcarchive/Products/Applications" -maxdepth 1 -name '*.app' -print
 
