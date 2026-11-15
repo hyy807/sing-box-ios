@@ -1,0 +1,179 @@
+name: Build SFI (official sing-box for iOS) - unsigned IPA
+
+# 复刻 SagerNet/sing-box 官方 Apple 客户端构建流程（.github/workflows/build.yml 的
+# build_apple_library + build_apple 两个 job），只去掉签名与 App Store 上传：
+#   1. 从官方 SagerNet/sing-box 取指定 tag 的源码
+#   2. make lib_install（gomobile v0.1.13）+ patch_go_for_ios.sh（官方脚本）
+#   3. build_libbox -target apple -platform ios/arm64 产出 Libbox.xcframework
+#   4. clients/apple 子模块 = sing-box-for-apple 官方客户端，xcodebuild archive SFI
+#   5. 打包成未签名 ipa（Payload/sing-box.app）
+
+on:
+  workflow_dispatch:
+    inputs:
+      core_ref:
+        description: "sing-box 源码 ref（tag 或分支）"
+        required: true
+        default: "v1.14.4"
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sfi-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  libbox:
+    name: Libbox (ios/arm64)
+    runs-on: xcode-27
+    timeout-minutes: 90
+    steps:
+      - name: Checkout sing-box
+        uses: actions/checkout@v5
+        with:
+          repository: SagerNet/sing-box
+          ref: ${{ inputs.core_ref || 'v1.14.4' }}
+          path: sing-box
+          fetch-depth: 1
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.26.10
+          cache: false
+
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: ~/go/pkg/mod
+          key: go-mod-macos-${{ hashFiles('sing-box/go.sum') }}
+          restore-keys: go-mod-macos-
+
+      - name: Patch Go for iOS
+        working-directory: sing-box
+        run: .github/patch_go_for_ios.sh
+
+      - name: Install gomobile
+        working-directory: sing-box
+        run: make lib_install
+
+      - name: Build Libbox
+        working-directory: sing-box
+        env:
+          GOTOOLCHAIN: local
+        run: |
+          export PATH="$PATH:$(go env GOPATH)/bin"
+          go run ./cmd/internal/build_libbox -target apple -platform ios/arm64
+          test -d Libbox.xcframework
+          mkdir -p dist
+          tar -cf dist/Libbox-ios-arm64.tar Libbox.xcframework
+          ls -l dist
+
+      - name: Upload Libbox
+        uses: actions/upload-artifact@v4
+        with:
+          name: libbox-ios-arm64
+          path: sing-box/dist
+          compression-level: 1
+
+  sfi:
+    name: SFI app (unsigned)
+    needs: libbox
+    runs-on: xcode-27
+    timeout-minutes: 120
+    steps:
+      - name: Checkout sing-box
+        uses: actions/checkout@v5
+        with:
+          repository: SagerNet/sing-box
+          ref: ${{ inputs.core_ref || 'v1.14.4' }}
+          path: sing-box
+          fetch-depth: 1
+
+      - name: Checkout Apple client
+        working-directory: sing-box
+        run: git submodule update --init --recursive clients/apple
+
+      - name: Download Libbox
+        uses: actions/download-artifact@v4
+        with:
+          name: libbox-ios-arm64
+          path: libbox
+
+      - name: Prepare library
+        run: |
+          test -f libbox/Libbox-ios-arm64.tar
+          tar -xf libbox/Libbox-ios-arm64.tar -C sing-box/clients/apple
+          test -d sing-box/clients/apple/Libbox.xcframework
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.26.10
+          cache: false
+
+      - name: Trust build plugins
+        run: defaults write com.apple.dt.Xcode IDESkipPackagePluginFingerprintValidatation -bool YES
+
+      - name: Resolve Swift packages
+        working-directory: sing-box/clients/apple
+        run: |
+          xcodebuild -resolvePackageDependencies \
+            -scheme SFI \
+            -clonedSourcePackagesDirPath "$RUNNER_TEMP/SourcePackages" \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData"
+
+      - name: Archive SFI
+        working-directory: sing-box/clients/apple
+        env:
+          DISABLE_SWIFTLINT: "1"
+          MARKETING_VERSION: ${{ inputs.core_ref || 'v1.14.4' }}
+        run: |
+          # MARKETING_VERSION 去掉前缀 v，得到官方版本号
+          VERSION="${MARKETING_VERSION#v}"
+          xcodebuild archive \
+            -skipPackagePluginValidation \
+            -clonedSourcePackagesDirPath "$RUNNER_TEMP/SourcePackages" \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+            -scheme SFI \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath build/SFI.xcarchive \
+            MARKETING_VERSION="$VERSION" \
+            CURRENT_PROJECT_VERSION="${GITHUB_RUN_NUMBER}" \
+            BASE_PACKAGE_IDENTIFIER=io.nekohasekai.sfi \
+            APP_GROUP_IDENTIFIER=group.io.nekohasekai.sfi \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            ENABLE_BITCODE=NO
+          test -d "build/SFI.xcarchive/Products/Applications"
+          find "build/SFI.xcarchive/Products/Applications" -maxdepth 1 -name '*.app' -print
+
+      - name: Package unsigned IPA
+        run: |
+          set -euo pipefail
+          APPS_DIR="sing-box/clients/apple/build/SFI.xcarchive/Products/Applications"
+          APP=$(find "$APPS_DIR" -maxdepth 1 -name '*.app' | head -1)
+          test -n "$APP"
+          echo "app = $APP"
+          VERSION="${{ inputs.core_ref || 'v1.14.4' }}"; VERSION="${VERSION#v}"
+          rm -rf out && mkdir -p out/Payload
+          cp -R "$APP" out/Payload/
+          # 清掉可能存在的不完整签名，保证是纯未签名包
+          find out/Payload -name '_CodeSignature' -type d -prune -exec rm -rf {} +
+          (cd out && zip -qry "../SFI-${VERSION}-unsigned.ipa" Payload)
+          ls -l "SFI-${VERSION}-unsigned.ipa"
+          echo "--- 结构校验 ---"
+          unzip -l "SFI-${VERSION}-unsigned.ipa" | head -5
+          test -d out/Payload/sing-box.app/PlugIns
+          echo "IPA_NAME=SFI-${VERSION}-unsigned.ipa" >> "$GITHUB_ENV"
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: SFI-unsigned
+          path: "*.ipa"
