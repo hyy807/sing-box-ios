@@ -1,0 +1,159 @@
+name: Build SFI from this checkout - unsigned IPA
+
+# 从**本仓库里这份源码**构建官方 sing-box iOS 客户端（SFI）未签名 ipa。
+# 流程与 SagerNet/sing-box 的 .github/workflows/build.yml 一致：
+#   1. make lib_install（gomobile v0.1.13）+ .github/patch_go_for_ios.sh
+#   2. build_libbox -target apple -platform ios/arm64 → Libbox.xcframework
+#   3. clients/apple（= sing-box-for-apple 官方客户端）xcodebuild archive -scheme SFI
+#   4. 打 Payload → 未签名 ipa
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "版本号（用于 ipa 文件名和 MARKETING_VERSION）"
+        required: true
+        default: "1.14.4"
+  push:
+    branches: [vendor/v1.14.4]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sfi-local-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  libbox:
+    name: Libbox (ios/arm64)
+    runs-on: xcode-27
+    timeout-minutes: 90
+    steps:
+      - name: Checkout (self)
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.26.10
+          cache: false
+
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: ~/go/pkg/mod
+          key: go-mod-macos-${{ hashFiles('go.sum') }}
+          restore-keys: go-mod-macos-
+
+      - name: Patch Go for iOS
+        run: .github/patch_go_for_ios.sh
+
+      - name: Install gomobile
+        run: make lib_install
+
+      - name: Build Libbox
+        env:
+          GOTOOLCHAIN: local
+        run: |
+          export PATH="$PATH:$(go env GOPATH)/bin"
+          go run ./cmd/internal/build_libbox -target apple -platform ios/arm64
+          test -d Libbox.xcframework
+          mkdir -p dist
+          tar -cf dist/Libbox-ios-arm64.tar Libbox.xcframework
+          ls -l dist
+
+      - name: Upload Libbox
+        uses: actions/upload-artifact@v4
+        with:
+          name: libbox-ios-arm64
+          path: dist
+          compression-level: 1
+
+  sfi:
+    name: SFI app (unsigned)
+    needs: libbox
+    runs-on: xcode-27
+    timeout-minutes: 120
+    steps:
+      - name: Checkout (self)
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+
+      - name: Download Libbox
+        uses: actions/download-artifact@v4
+        with:
+          name: libbox-ios-arm64
+          path: libbox
+
+      - name: Prepare library
+        run: |
+          test -f libbox/Libbox-ios-arm64.tar
+          tar -xf libbox/Libbox-ios-arm64.tar -C clients/apple
+          test -d clients/apple/Libbox.xcframework
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.26.10
+          cache: false
+
+      - name: Trust build plugins
+        run: defaults write com.apple.dt.Xcode IDESkipPackagePluginFingerprintValidatation -bool YES
+
+      - name: Resolve Swift packages
+        working-directory: clients/apple
+        run: |
+          xcodebuild -resolvePackageDependencies \
+            -scheme SFI \
+            -clonedSourcePackagesDirPath "$RUNNER_TEMP/SourcePackages" \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData"
+
+      - name: Archive SFI
+        working-directory: clients/apple
+        env:
+          DISABLE_SWIFTLINT: "1"
+          INPUT_VERSION: ${{ inputs.version || '1.14.4' }}
+        run: |
+          VERSION="${INPUT_VERSION#v}"
+          xcodebuild archive \
+            -skipPackagePluginValidation \
+            -clonedSourcePackagesDirPath "$RUNNER_TEMP/SourcePackages" \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+            -scheme SFI \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath build/SFI.xcarchive \
+            MARKETING_VERSION="$VERSION" \
+            BASE_PACKAGE_IDENTIFIER=io.nekohasekai.sfi \
+            APP_GROUP_IDENTIFIER=group.io.nekohasekai.sfi \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            ENABLE_BITCODE=NO
+          test -d "build/SFI.xcarchive/Products/Applications"
+          find "build/SFI.xcarchive/Products/Applications" -maxdepth 1 -name '*.app' -print
+
+      - name: Package unsigned IPA
+        env:
+          INPUT_VERSION: ${{ inputs.version || '1.14.4' }}
+        run: |
+          set -euo pipefail
+          APPS_DIR="clients/apple/build/SFI.xcarchive/Products/Applications"
+          APP=$(find "$APPS_DIR" -maxdepth 1 -name '*.app' | head -1)
+          test -n "$APP"
+          VERSION="${INPUT_VERSION#v}"
+          rm -rf out && mkdir -p out/Payload
+          cp -R "$APP" out/Payload/
+          find out/Payload -name '_CodeSignature' -type d -prune -exec rm -rf {} +
+          (cd out && zip -qry "../SFI-${VERSION}-unsigned.ipa" Payload)
+          ls -l "SFI-${VERSION}-unsigned.ipa"
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: SFI-unsigned
+          path: "*.ipa"
