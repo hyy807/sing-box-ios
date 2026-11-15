@@ -4,16 +4,28 @@ public enum FilePath {
     public static let packageName = AppConfiguration.packageName
     public static let groupName = AppConfiguration.appGroupID
 
-    private static let defaultSharedDirectory: URL! = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: groupName)
+    private static let defaultSharedDirectory: URL = {
+        // profile 里有同名 App Group 就用它（app 与扩展共享配置的前提）
+        if !groupName.isEmpty,
+           let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: groupName) {
+            return container
+        }
+        // 没有可用的 App Group（自签常见）：退回 app 自己的容器，至少不再启动即崩。
+        // 代价：主 app 与网络扩展无法共享文件，VPN 功能会受限，但界面能进去。
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+        try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+        return base
+    }()
 
     #if os(iOS)
-        public static let sharedDirectory = defaultSharedDirectory!
+        public static let sharedDirectory = defaultSharedDirectory
     #elseif os(tvOS)
         public static let sharedDirectory = defaultSharedDirectory
             .appendingPathComponent("Library", isDirectory: true)
             .appendingPathComponent("Caches", isDirectory: true)
     #elseif os(macOS)
-        public static var sharedDirectory: URL! = defaultSharedDirectory
+        public static var sharedDirectory: URL = defaultSharedDirectory
     #endif
 
     #if os(iOS)

@@ -9,15 +9,50 @@ public enum AppConfiguration {
     }()
 
     public static let appGroupID: String = {
-        guard let value = Bundle.main.object(forInfoDictionaryKey: "AppGroupIdentifier") as? String else {
-            fatalError("Missing AppGroupIdentifier in Info.plist")
+        // 自签/侧载时 App Group 的名字由 provisioning profile 决定，
+        // 硬编码官方名字（group.io.nekohasekai.sfi）必然拿不到容器 -> 启动即崩。
+        // 优先读 profile 里真正派发下来的 group，其次才用 Info.plist。
+        if let resolved = appGroupFromProvisioningProfile() {
+            return resolved
         }
-        return value
+        if let value = Bundle.main.object(forInfoDictionaryKey: "AppGroupIdentifier") as? String,
+           !value.isEmpty, !value.contains("$(") {
+            return value
+        }
+        return ""
     }()
+
+    private static func appGroupFromProvisioningProfile() -> String? {
+        #if os(iOS) || os(tvOS)
+            var bundles: [Bundle] = [Bundle.main]
+            // 扩展进程：再往上找宿主 .app 里那份 profile
+            let hostURL = Bundle.main.bundleURL
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+            if hostURL.pathExtension == "app", let host = Bundle(url: hostURL) {
+                bundles.append(host)
+            }
+            for bundle in bundles {
+                guard let url = bundle.url(forResource: "embedded", withExtension: "mobileprovision"),
+                      let data = try? Data(contentsOf: url) else { continue }
+                guard let start = data.range(of: Data("<?xml".utf8))?.lowerBound,
+                      let end = data.range(of: Data("</plist>".utf8), options: [], in: start..<data.endIndex) else { continue }
+                let plistData = data.subdata(in: start..<end.upperBound)
+                guard let plist = try? PropertyListSerialization.propertyList(from: plistData, options: [], format: nil) as? [String: Any],
+                      let entitlements = plist["Entitlements"] as? [String: Any],
+                      let groups = entitlements["com.apple.security.application-groups"] as? [String],
+                      let first = groups.first, !first.isEmpty else { continue }
+                return first
+            }
+        #endif
+        return nil
+    }
 
     public static var teamID: String {
         guard let dotIndex = appGroupID.firstIndex(of: ".") else {
-            fatalError("Invalid appGroupID format: \(appGroupID)")
+            // 没有 App Group 时不要连带把 app 打死（这里只用于 macOS XPC 校验）
+            return ""
         }
         return String(appGroupID[..<dotIndex])
     }

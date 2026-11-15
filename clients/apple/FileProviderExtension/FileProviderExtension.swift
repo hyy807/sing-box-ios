@@ -5,15 +5,25 @@ class FileProviderExtension: NSObject, NSFileProviderReplicatedExtension {
     let domain: NSFileProviderDomain
 
     private static let appGroupID: String = {
-        guard let value = Bundle.main.object(forInfoDictionaryKey: "AppGroupIdentifier") as? String else {
-            fatalError("Missing AppGroupIdentifier in Info.plist")
+        // 自签时从 provisioning profile 里取真正派发的 App Group（见 AppConfiguration.swift）
+        if let url = Bundle.main.url(forResource: "embedded", withExtension: "mobileprovision"),
+           let data = try? Data(contentsOf: url),
+           let start = data.range(of: Data("<?xml".utf8))?.lowerBound,
+           let end = data.range(of: Data("</plist>".utf8), options: [], in: start..<data.endIndex),
+           let plist = try? PropertyListSerialization.propertyList(from: data.subdata(in: start..<end.upperBound), options: [], format: nil) as? [String: Any],
+           let entitlements = plist["Entitlements"] as? [String: Any],
+           let groups = entitlements["com.apple.security.application-groups"] as? [String],
+           let first = groups.first, !first.isEmpty {
+            return first
         }
-        return value
+        return Bundle.main.object(forInfoDictionaryKey: "AppGroupIdentifier") as? String ?? ""
     }()
 
     private var workingDirectory: URL {
-        let groupURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: Self.appGroupID)!
-        return groupURL
+        let base = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: Self.appGroupID)
+            ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+        return base
             .appendingPathComponent("Library", isDirectory: true)
             .appendingPathComponent("Caches", isDirectory: true)
             .appendingPathComponent("Working", isDirectory: true)
