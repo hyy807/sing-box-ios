@@ -38,7 +38,7 @@ jobs:
           GOTOOLCHAIN: local
         run: |
           export PATH="$PATH:$(go env GOPATH)/bin"
-          go run ./cmd/internal/build_libbox -target apple -platform iossimulator/arm64
+          go run ./cmd/internal/build_libbox -target apple -platform iossimulator
           test -d Libbox.xcframework
           rm -rf clients/apple/Libbox.xcframework
           cp -R Libbox.xcframework clients/apple/
@@ -54,6 +54,7 @@ jobs:
             -scheme SFI \
             -configuration Debug \
             -destination 'generic/platform=iOS Simulator' \
+            ARCHS=arm64 ONLY_ACTIVE_ARCH=NO \
             -derivedDataPath "$RUNNER_TEMP/DD" \
             BASE_PACKAGE_IDENTIFIER=io.nekohasekai.sfi \
             APP_GROUP_IDENTIFIER=group.io.nekohasekai.sfi \
@@ -64,12 +65,13 @@ jobs:
       - name: Boot simulator and launch with console
         run: |
           set -o pipefail
-          UDID=$(xcrun simctl list devices available | grep -oE '^\s+i(Phone|Pad).*\(([0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12})\)' | grep -oE '[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}' | head -1)
+          UDID=$(xcrun simctl list devices available | grep -m1 'iPhone' | grep -oE '[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}' | head -1)
           echo "UDID=$UDID"
           xcrun simctl boot "$UDID" || true
           xcrun simctl bootstatus "$UDID" -b
           APP=$(find "$RUNNER_TEMP/DD/Build/Products" -maxdepth 3 -name '*.app' | head -1)
           echo "APP=$APP"
+          test -n "$APP" || { echo '找不到 .app'; exit 1; }
           xcrun simctl install "$UDID" "$APP"
           echo '=== launch ==='
           timeout 60 xcrun simctl launch --console-pty "$UDID" io.nekohasekai.sfi > launch.log 2>&1 || echo "launch exit=$?"
