@@ -561,7 +561,7 @@ struct MainView: View {
             if let error {
                 alert = AlertState(action: "parse remote profile import link", error: error)
             }
-        } else if url.pathExtension == "bpf" {
+        } else if ["bpf", "json"].contains(url.pathExtension.lowercased()) {
             do {
                 importProfile = try url.withSecurityScopedAccess {
                     try .from(Data(contentsOf: url))
