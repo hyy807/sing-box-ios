@@ -551,7 +551,23 @@ struct MainView: View {
         }
     }
 
+    private func importFile(_ url: URL) {
+        do {
+            importProfile = try url.withSecurityScopedAccess {
+                try .from(Data(contentsOf: url))
+            }
+        } catch {
+            alert = AlertState(action: "import profile from URL", error: error)
+        }
+    }
+
     private func openURL(url: URL) {
+        // 文件必须最先处理：file:// URL 没有 host，schemeAction 会退化成整条路径，
+        // 先判 scheme 会把文件路由错（上游 issue #4528 就是这种错位）。
+        if url.isFileURL, ["bpf", "json"].contains(url.pathExtension.lowercased()) {
+            importFile(url)
+            return
+        }
         if url.schemeAction == "taildrop" {
             environments.pendingTaildropEndpointTag = url.schemeQueryValue("endpoint") ?? ""
             selection = .tools
@@ -560,14 +576,6 @@ struct MainView: View {
             importRemoteProfile = LibboxParseRemoteProfileImportLink(url.absoluteString, &error)
             if let error {
                 alert = AlertState(action: "parse remote profile import link", error: error)
-            }
-        } else if ["bpf", "json"].contains(url.pathExtension.lowercased()) {
-            do {
-                importProfile = try url.withSecurityScopedAccess {
-                    try .from(Data(contentsOf: url))
-                }
-            } catch {
-                alert = AlertState(action: "import profile from URL", error: error)
             }
         } else {
             alert = AlertState(errorMessage: String(localized: "Handled unknown URL \(url.absoluteString)"))
