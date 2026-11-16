@@ -230,6 +230,14 @@ public struct NewProfileMenuView: View {
                     let urls = try result.get()
                     guard let url = urls.first else { return }
 
+                    // .bpf 是 protobuf 打包的 profile；.json 是纯配置文本，
+                    // 必须走“本地配置”路径，否则会被 protobuf 解析器判为 invalid message。
+                    if url.pathExtension.lowercased() == "json" {
+                        let fileName = url.deletingPathExtension().lastPathComponent
+                        localImportRequest = NewProfileView.LocalImportRequest(name: fileName, fileURL: url)
+                        return
+                    }
+
                     let data = try await BlockingIO.run {
                         // asCopy: true 时文件已复制进 app 自己的 Inbox，不需要 security scope，
                         // 用“尽力而为”的版本，避免 startAccessing 返回 false 就把读取判死。

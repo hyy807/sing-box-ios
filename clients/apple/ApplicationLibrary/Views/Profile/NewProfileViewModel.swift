@@ -114,9 +114,8 @@ public final class NewProfileViewModel: BaseViewModel {
                     guard let fileURL else {
                         throw NSError(domain: "NewProfileViewModel", code: 0, userInfo: [NSLocalizedDescriptionKey: String(localized: "Missing file")])
                     }
-                    configContent = try fileURL.withRequiredSecurityScopedAccess(
-                        or: NSError(domain: "NewProfileViewModel", code: 0, userInfo: [NSLocalizedDescriptionKey: String(localized: "Missing access to selected file")])
-                    ) {
+                    // 选择器 asCopy 后文件已在 app Inbox，无需 security scope
+                    configContent = try fileURL.withSecurityScopedAccess {
                         try String(contentsOf: fileURL)
                     }
                 } else {
