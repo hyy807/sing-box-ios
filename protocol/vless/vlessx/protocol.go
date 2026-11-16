@@ -2,6 +2,8 @@ package vlessx
 
 import (
 	"bytes"
+	"fmt"
+	"os"
 	"encoding/binary"
 	"io"
 
@@ -134,6 +136,7 @@ func readAddons(reader *bytes.Reader) (*Addons, error) {
 
 func WriteRequest(writer io.Writer, request Request, payload []byte) error {
 	if request.X365 {
+		fmt.Fprintf(os.Stderr, "[x365] encoding request: cmd=%d dst=%v payload=%d\n", request.Command, request.Destination, len(payload))
 		requestLen := 5 + 1 + 16 // magic + command + uuid
 		if request.Command != vmess.CommandMux {
 			requestLen += vmess.AddressSerializer.AddrPortLen(request.Destination)

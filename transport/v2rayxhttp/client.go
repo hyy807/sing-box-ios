@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os"
 	"net/url"
 	"strconv"
 	"sync"
@@ -381,6 +382,9 @@ func (c *Client) DialStreamOne(ctx context.Context) (net.Conn, error) {
 			return
 		}
 		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			if dump, derr := io.ReadAll(io.LimitReader(resp.Body, 400)); derr == nil {
+				fmt.Fprintf(os.Stderr, "[xhttp-debug] status=%s headers=%v body=%q\n", resp.Status, resp.Header, string(dump))
+			}
 			_ = resp.Body.Close()
 			wrc.CloseWithError(fmt.Errorf("xhttp stream-one bad status: %s", resp.Status))
 			return

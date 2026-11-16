@@ -5,6 +5,8 @@ package v2rayxhttp
 
 import (
 	"context"
+	"fmt"
+	"os"
 	"net"
 	"net/http"
 	"time"
@@ -82,6 +84,11 @@ func NewClient(
 	}
 
 	// sing-box 的 TLS（含 REALITY）在这里注入
+	if tlsConfig != nil {
+		fmt.Fprintf(os.Stderr, "[xhttp] tlsConfig type=%T serverName=%q nextProtos=%v\n", tlsConfig, tlsConfig.ServerName(), tlsConfig.NextProtos())
+	} else {
+		fmt.Fprintln(os.Stderr, "[xhttp] tlsConfig is nil")
+	}
 	alpn := tlsConfig.NextProtos()
 	if len(alpn) == 0 {
 		alpn = []string{"h2", "http/1.1"}

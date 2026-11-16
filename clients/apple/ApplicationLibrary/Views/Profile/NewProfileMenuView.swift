@@ -2,6 +2,9 @@ import Foundation
 import Libbox
 import Library
 import SwiftUI
+#if os(iOS)
+    import UIKit
+#endif
 import UniformTypeIdentifiers
 
 @MainActor
@@ -27,7 +30,11 @@ public struct NewProfileMenuView: View {
 
     #if !os(tvOS)
         private static var importContentTypes: [UTType] {
-            ["bpf", "json"].flatMap { UTType.types(tag: $0, tagClass: .filenameExtension, conformingTo: nil) }
+            // 侧载/自签环境下，第三方容器里的文件常被系统判成未知类型而变灰，
+            // 这里额外放开 .item（所有文件），保证选择器里不会被禁用。
+            var types = ["bpf", "json"].flatMap { UTType.types(tag: $0, tagClass: .filenameExtension, conformingTo: nil) }
+            types.append(.item)
+            return types
         }
     #endif
 
@@ -183,6 +190,14 @@ public struct NewProfileMenuView: View {
                     }
                 #endif
 
+                #if os(iOS)
+                    FormButton {
+                        importFromClipboard()
+                    } label: {
+                        Label("Import from Clipboard", systemImage: "doc.on.clipboard")
+                    }
+                #endif
+
                 #if os(macOS)
                     FormButton {
                         showNewProfile = true
@@ -205,6 +220,43 @@ public struct NewProfileMenuView: View {
             }
         }
     }
+
+    #if os(iOS)
+        private func importFromClipboard() {
+            guard let text = UIPasteboard.general.string?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else {
+                alert = AlertState(
+                    title: String(localized: "Import Profile"),
+                    message: String(localized: "Clipboard is empty"),
+                    primaryButton: .default("OK"),
+                    secondaryButton: nil
+                )
+                return
+            }
+            Task { @MainActor in
+                do {
+                    let content = try LibboxProfileContent.from(Data(text.utf8))
+                    alert = AlertState(
+                        title: String(localized: "Import Profile"),
+                        message: String(localized: "Are you sure to import profile \(content.name)?"),
+                        primaryButton: .default(String(localized: "Import")) {
+                            Task {
+                                do {
+                                    try await content.importProfile()
+                                    environments.profileUpdate.send()
+                                    complete()
+                                } catch {
+                                    alert = AlertState(action: "import profile", error: error)
+                                }
+                            }
+                        },
+                        secondaryButton: .cancel()
+                    )
+                } catch {
+                    alert = AlertState(action: "read imported profile", error: error)
+                }
+            }
+        }
+    #endif
 
     #if !os(tvOS)
         private func handleFileImport(_ result: Result<[URL], Error>) {
