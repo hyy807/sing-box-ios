@@ -231,9 +231,9 @@ public struct NewProfileMenuView: View {
                     guard let url = urls.first else { return }
 
                     let data = try await BlockingIO.run {
-                        try url.withRequiredSecurityScopedAccess(
-                            or: NSError(domain: "NewProfileMenuView", code: 0, userInfo: [NSLocalizedDescriptionKey: String(localized: "Missing access to selected file")])
-                        ) {
+                        // asCopy: true 时文件已复制进 app 自己的 Inbox，不需要 security scope，
+                        // 用“尽力而为”的版本，避免 startAccessing 返回 false 就把读取判死。
+                        try url.withSecurityScopedAccess {
                             try Data(contentsOf: url)
                         }
                     }
