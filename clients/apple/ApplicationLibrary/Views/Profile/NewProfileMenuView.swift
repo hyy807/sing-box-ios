@@ -129,7 +129,24 @@ public struct NewProfileMenuView: View {
                 }
             }
             .alert($alert)
-        #if !os(tvOS)
+        #if os(iOS)
+            // 真机上 SwiftUI .fileImporter 存在文件不可选/回调不触发的已知缺陷，
+            // 这里改用 UIKit 选择器（asCopy: true），保证文件一定可选。
+            .sheet(isPresented: $showFileImporter) {
+                DocumentPicker(contentTypes: Self.importContentTypes) { result in
+                    showFileImporter = false
+                    if case let .failure(error) = result, (error as NSError).code == NSUserCancelledError {
+                        return
+                    }
+                    handleFileImport(result)
+                }
+            }
+            .sheet(isPresented: $showQRScanner) {
+                QRScannerView { result in
+                    handleQRScanResult(result)
+                }
+            }
+        #elseif !os(tvOS)
             .fileImporter(
                 isPresented: $showFileImporter,
                 allowedContentTypes: Self.importContentTypes,
