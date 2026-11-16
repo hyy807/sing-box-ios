@@ -27,11 +27,7 @@ public struct NewProfileMenuView: View {
 
     #if !os(tvOS)
         private static var importContentTypes: [UTType] {
-            // 侧载/自签环境下，第三方容器里的文件常被系统判成未知类型而变灰，
-            // 这里额外放开 .item（所有文件），保证选择器里不会被禁用。
-            var types = ["bpf", "json"].flatMap { UTType.types(tag: $0, tagClass: .filenameExtension, conformingTo: nil) }
-            types.append(.item)
-            return types
+            ["bpf", "json"].flatMap { UTType.types(tag: $0, tagClass: .filenameExtension, conformingTo: nil) }
         }
     #endif
 
