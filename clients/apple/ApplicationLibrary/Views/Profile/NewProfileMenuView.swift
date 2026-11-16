@@ -213,12 +213,6 @@ public struct NewProfileMenuView: View {
                     let urls = try result.get()
                     guard let url = urls.first else { return }
 
-                    if url.pathExtension.lowercased() == "json" {
-                        let fileName = url.deletingPathExtension().lastPathComponent
-                        localImportRequest = NewProfileView.LocalImportRequest(name: fileName, fileURL: url)
-                        return
-                    }
-
                     let data = try await BlockingIO.run {
                         try url.withRequiredSecurityScopedAccess(
                             or: NSError(domain: "NewProfileMenuView", code: 0, userInfo: [NSLocalizedDescriptionKey: String(localized: "Missing access to selected file")])
