@@ -88,6 +88,23 @@ jobs:
           echo '=== 进程状态 ==='
           xcrun simctl spawn "$UDID" launchctl list | grep -i nekohasekai || echo '未在运行'
 
+      - name: Inspect app container (写入能力证据)
+        if: always()
+        run: |
+          echo '=== 容器路径 ==='
+          CONT=$(xcrun simctl get_app_container booted io.nekohasekai.sfi data 2>&1 || true)
+          echo "container=$CONT"
+          if [ -d "$CONT" ]; then
+            echo '=== 容器内容（前 3 层）==='
+            find "$CONT" -maxdepth 3 | head -40
+            echo '=== 数据库/配置是否存在 ==='
+            ls -l "$CONT/Library/Application Support/" 2>/dev/null || echo '没有 Application Support'
+            ls -l "$CONT/Library/Application Support/configs" 2>/dev/null || echo '没有 configs 目录'
+          fi
+          echo '=== 打包后的 Info.plist 关键键 ==='
+          APP=$(find "$RUNNER_TEMP/DD/Build/Products" -maxdepth 3 -name '*.app' | head -1)
+          /usr/libexec/PlistBuddy -c 'Print :UIFileSharingEnabled' "$APP/Info.plist" 2>&1 || echo 'UIFileSharingEnabled 缺失'
+
       - name: Collect crash logs from the simulator
         if: always()
         run: |
