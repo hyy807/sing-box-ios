@@ -2,9 +2,6 @@ import Foundation
 import Libbox
 import Library
 import SwiftUI
-#if os(iOS)
-    import UIKit
-#endif
 import UniformTypeIdentifiers
 
 @MainActor
@@ -190,14 +187,6 @@ public struct NewProfileMenuView: View {
                     }
                 #endif
 
-                #if os(iOS)
-                    FormButton {
-                        importFromClipboard()
-                    } label: {
-                        Label("Import from Clipboard", systemImage: "doc.on.clipboard")
-                    }
-                #endif
-
                 #if os(macOS)
                     FormButton {
                         showNewProfile = true
@@ -220,43 +209,6 @@ public struct NewProfileMenuView: View {
             }
         }
     }
-
-    #if os(iOS)
-        private func importFromClipboard() {
-            guard let text = UIPasteboard.general.string?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else {
-                alert = AlertState(
-                    title: String(localized: "Import Profile"),
-                    message: String(localized: "Clipboard is empty"),
-                    primaryButton: .default("OK"),
-                    secondaryButton: nil
-                )
-                return
-            }
-            Task { @MainActor in
-                do {
-                    let content = try LibboxProfileContent.from(Data(text.utf8))
-                    alert = AlertState(
-                        title: String(localized: "Import Profile"),
-                        message: String(localized: "Are you sure to import profile \(content.name)?"),
-                        primaryButton: .default(String(localized: "Import")) {
-                            Task {
-                                do {
-                                    try await content.importProfile()
-                                    environments.profileUpdate.send()
-                                    complete()
-                                } catch {
-                                    alert = AlertState(action: "import profile", error: error)
-                                }
-                            }
-                        },
-                        secondaryButton: .cancel()
-                    )
-                } catch {
-                    alert = AlertState(action: "read imported profile", error: error)
-                }
-            }
-        }
-    #endif
 
     #if !os(tvOS)
         private func handleFileImport(_ result: Result<[URL], Error>) {
