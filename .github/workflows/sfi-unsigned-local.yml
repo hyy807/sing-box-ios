@@ -160,3 +160,4 @@ jobs:
         with:
           name: SFI-unsigned
           path: "*.ipa"
+# EFAN X365 adaptation build trigger
