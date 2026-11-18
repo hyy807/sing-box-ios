@@ -4,9 +4,6 @@ import (
 	"encoding/binary"
 	"io"
 	"net"
-	"fmt"
-	"os"
-	"strings"
 	"sync"
 
 	"github.com/sagernet/sing-vmess"
@@ -29,12 +26,6 @@ type Client struct {
 }
 
 func NewClient(userId string, flow string, logger logger.Logger) (*Client, error) {
-	// FlclashYF 私有协议标记：uuid 尾部 "#x365"
-	x365 := false
-	if strings.HasSuffix(strings.ToLower(userId), "#x365") {
-		userId = userId[:len(userId)-len("#x365")]
-		x365 = true
-	}
 	user, err := uuid.FromString(userId)
 	if err != nil {
 		user = uuid.NewV5(uuid.Nil, userId)
@@ -44,10 +35,7 @@ func NewClient(userId string, flow string, logger logger.Logger) (*Client, error
 	default:
 		return nil, E.New("unsupported flow: " + flow)
 	}
-	if x365 {
-		fmt.Fprintln(os.Stderr, "[x365] private handshake enabled, uuid stripped")
-	}
-	return &Client{key: user, flow: flow, x365: x365, logger: logger}, nil
+	return &Client{key: user, flow: flow, logger: logger}, nil
 }
 
 // SetX365 selects the EFAN frame format used by FlClash.

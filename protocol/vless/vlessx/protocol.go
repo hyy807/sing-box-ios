@@ -2,10 +2,10 @@ package vlessx
 
 import (
 	"bytes"
-	"fmt"
-	"os"
 	"encoding/binary"
+	"fmt"
 	"io"
+	"os"
 
 	"github.com/sagernet/sing-vmess"
 	"github.com/sagernet/sing/common"
@@ -136,26 +136,14 @@ func readAddons(reader *bytes.Reader) (*Addons, error) {
 
 func WriteRequest(writer io.Writer, request Request, payload []byte) error {
 	if request.X365 {
-		fmt.Fprintf(os.Stderr, "[x365] encoding request: cmd=%d dst=%v payload=%d\n", request.Command, request.Destination, len(payload))
-		requestLen := 5 + 1 + 16 // magic + command + uuid
-		if request.Command != vmess.CommandMux {
-			requestLen += vmess.AddressSerializer.AddrPortLen(request.Destination)
-		}
-		requestLen += len(payload)
-		buffer := buf.NewSize(requestLen)
+		buffer := buf.NewSize(RequestLen(request) + len(payload))
 		defer buffer.Release()
-		common.Must(
-			common.Error(buffer.Write(x365Magic[:])),
-			buffer.WriteByte(request.Command),
-			common.Error(buffer.Write(request.UUID[:])),
-		)
-		if request.Command != vmess.CommandMux {
-			err := vmess.AddressSerializer.WriteAddrPort(buffer, request.Destination)
-			if err != nil {
-				return err
-			}
+		if err := writeEFANHeader(buffer, request); err != nil {
+			return err
 		}
-		common.Must1(buffer.Write(payload))
+		if _, err := buffer.Write(payload); err != nil {
+			return err
+		}
 		return common.Error(writer.Write(buffer.Bytes()))
 	}
 	var requestLen int
@@ -205,15 +193,7 @@ func WriteRequest(writer io.Writer, request Request, payload []byte) error {
 
 func EncodeRequest(request Request, buffer *buf.Buffer) error {
 	if request.X365 {
-		common.Must(
-			common.Error(buffer.Write(x365Magic[:])),
-			buffer.WriteByte(request.Command),
-			common.Error(buffer.Write(request.UUID[:])),
-		)
-		if request.Command != vmess.CommandMux {
-			return vmess.AddressSerializer.WriteAddrPort(buffer, request.Destination)
-		}
-		return nil
+		return writeEFANHeader(buffer, request)
 	}
 	var addonsLen int
 	if request.Flow != "" {

@@ -1,20 +1,19 @@
 package v2rayxhttp
 
 import (
- "bufio"
- "strings"
+	"bufio"
 	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"net"
-	"os"
 	"net/url"
+	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
-
 
 	"net/http"
 	"net/http/httptrace"
@@ -343,7 +342,7 @@ func (c *Client) DialStreamOne(ctx context.Context) (net.Conn, error) {
 	gotConn := make(chan bool, 1)
 
 	reqCtx, reqCancel := context.WithCancel(c.ctx) // reqCtx must alive during conn not closed
-	stop := afterFunc(ctx, reqCancel) // temporarily connect ctx with reqCtx when dialing
+	stop := afterFunc(ctx, reqCancel)              // temporarily connect ctx with reqCtx when dialing
 	defer stop()                                   // disconnect ctx with reqCtx after dialing
 
 	addrCtx := NewAddrContext(&conn.NetAddr, reqCtx)
@@ -375,7 +374,9 @@ func (c *Client) DialStreamOne(ctx context.Context) (net.Conn, error) {
 	}
 
 	latin1Body := strings.EqualFold(req.Header.Get("x-protocolabs-body-encoding"), "latin1")
-	if latin1Body { conn.writer = &latin1Writer{w: pw} }
+	if latin1Body {
+		conn.writer = &latin1Writer{w: pw}
+	}
 
 	wrc := NewWaitReadCloser()
 
@@ -409,7 +410,9 @@ func (c *Client) DialStreamOne(ctx context.Context) (net.Conn, error) {
 	}
 
 	conn.reader = wrc
-	if latin1Body { conn.reader = &latin1Reader{r: bufio.NewReader(wrc), closer: wrc} }
+	if latin1Body {
+		conn.reader = &latin1Reader{r: bufio.NewReader(wrc), closer: wrc}
+	}
 	conn.onClose = func() {
 		_ = pr.Close()
 		CloseTransport(transport)
@@ -451,7 +454,7 @@ func (c *Client) DialStreamUp(ctx context.Context) (net.Conn, error) {
 	gotConn := make(chan bool, 1)
 
 	reqCtx, reqCancel := context.WithCancel(c.ctx) // reqCtx must alive during conn not closed
-	stop := afterFunc(ctx, reqCancel) // temporarily connect ctx with reqCtx when dialing
+	stop := afterFunc(ctx, reqCancel)              // temporarily connect ctx with reqCtx when dialing
 	defer stop()                                   // disconnect ctx with reqCtx after dialing
 
 	addrCtx := NewAddrContext(&conn.NetAddr, reqCtx)
@@ -598,7 +601,7 @@ func (c *Client) DialPacketUp(ctx context.Context) (net.Conn, error) {
 	gotConn := make(chan bool, 1)
 
 	reqCtx, reqCancel := context.WithCancel(c.ctx) // reqCtx must alive during conn not closed
-	stop := afterFunc(ctx, reqCancel) // temporarily connect ctx with reqCtx when dialing
+	stop := afterFunc(ctx, reqCancel)              // temporarily connect ctx with reqCtx when dialing
 	defer stop()                                   // disconnect ctx with reqCtx after dialing
 
 	addrCtx := NewAddrContext(&conn.NetAddr, reqCtx)

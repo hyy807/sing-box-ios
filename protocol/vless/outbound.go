@@ -12,9 +12,9 @@ import (
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
+	vless "github.com/sagernet/sing-box/protocol/vless/vlessx"
 	"github.com/sagernet/sing-box/transport/v2ray"
 	"github.com/sagernet/sing-vmess/packetaddr"
-	vless "github.com/sagernet/sing-box/protocol/vless/vlessx"
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/bufio"
 	E "github.com/sagernet/sing/common/exceptions"
@@ -48,6 +48,17 @@ type Outbound struct {
 }
 
 func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.VLESSOutboundOptions) (adapter.Outbound, error) {
+	if options.X365 {
+		if options.Flow != "" {
+			return nil, E.New("x365: flow must be empty")
+		}
+		if options.Transport == nil || options.Transport.Type != "xhttp" {
+			return nil, E.New("x365: xhttp transport required")
+		}
+		if options.Multiplex != nil && options.Multiplex.Enabled {
+			return nil, E.New("x365: multiplex is unsupported")
+		}
+	}
 	outboundDialer, err := dialer.New(ctx, options.DialerOptions, options.ServerIsDomain())
 	if err != nil {
 		return nil, err
