@@ -157,7 +157,13 @@ func (h *Outbound) MultiplexEnabled() bool {
 
 func (h *Outbound) InterfaceUpdated(ctx context.Context) {
 	if h.transport != nil {
-		h.transport.Close()
+		if resetter, ok := h.transport.(interface{ Reset() error }); ok {
+			if err := resetter.Reset(); err != nil {
+				h.logger.WarnContext(ctx, "reset transport: ", err)
+			}
+		} else {
+			_ = h.transport.Close()
+		}
 	}
 	if h.multiplexDialer != nil {
 		h.multiplexDialer.Reset()

@@ -6,9 +6,10 @@ package v2rayxhttp
 import (
 	"context"
 	"fmt"
-	"os"
 	"net"
 	"net/http"
+	"os"
+	"sync"
 	"time"
 
 	"github.com/sagernet/sing-box/adapter"
@@ -21,7 +22,10 @@ import (
 var _ adapter.V2RayClientTransport = (*Transport)(nil)
 
 type Transport struct {
-	inner *Client
+	inner     *Client
+	mu        sync.RWMutex
+	closed    bool
+	newClient func() (*Client, error)
 }
 
 // NewClient 构造 XHTTP 客户端传输。
@@ -117,19 +121,52 @@ func NewClient(
 		)
 	}
 
-	client, err := NewXHTTPClient(cfg, makeTransport, nil, tlsConfig != nil)
+	factory := func() (*Client, error) { return NewXHTTPClient(cfg, makeTransport, nil, tlsConfig != nil) }
+	client, err := factory()
 	if err != nil {
 		return nil, err
 	}
-	return &Transport{inner: client}, nil
+	return &Transport{inner: client, newClient: factory}, nil
 }
 
 func (t *Transport) DialContext(ctx context.Context) (net.Conn, error) {
-	return t.inner.Dial(ctx)
+	t.mu.RLock()
+	client, closed := t.inner, t.closed
+	t.mu.RUnlock()
+	if closed {
+		return nil, net.ErrClosed
+	}
+	return client.Dial(ctx)
 }
 
+// Reset replaces the canceled generation on a network/interface change. Active
+// streams of the old network are canceled; future dials use a fresh context.
+func (t *Transport) Reset() error {
+	t.mu.Lock()
+	if t.closed {
+		t.mu.Unlock()
+		return net.ErrClosed
+	}
+	next, err := t.newClient()
+	if err != nil {
+		t.mu.Unlock()
+		return err
+	}
+	prev := t.inner
+	t.inner = next
+	t.mu.Unlock()
+	return prev.Close()
+}
 func (t *Transport) Close() error {
-	return t.inner.Close()
+	t.mu.Lock()
+	if t.closed {
+		t.mu.Unlock()
+		return nil
+	}
+	t.closed = true
+	client := t.inner
+	t.mu.Unlock()
+	return client.Close()
 }
 
 func headerMap(h http.Header) map[string]string {

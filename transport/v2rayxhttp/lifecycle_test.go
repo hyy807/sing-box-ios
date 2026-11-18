@@ -123,3 +123,61 @@ func TestHTTP2CloseDoesNotCancelPeer(t *testing.T) {
 	_ = a.Close()
 	echo(b, "peer-still-alive")
 }
+
+func TestResetRevivesCanceledTransport(t *testing.T) {
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+		w.(http.Flusher).Flush()
+		var b [64]byte
+		for {
+			n, err := r.Body.Read(b[:])
+			if n > 0 {
+				_, _ = w.Write(b[:n])
+				w.(http.Flusher).Flush()
+			}
+			if err != nil {
+				return
+			}
+		}
+	}))
+	server.EnableHTTP2 = true
+	server.StartTLS()
+	defer server.Close()
+	factory := func() (*Client, error) {
+		return NewXHTTPClient(&Config{Host: server.Listener.Addr().String(), Path: "/", Mode: "stream-one"}, func() http.RoundTripper { return server.Client().Transport }, nil, false)
+	}
+	first, err := factory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr := &Transport{inner: first, newClient: factory}
+	defer tr.Close()
+	for i := 0; i < 5; i++ {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		c, err := tr.DialContext(ctx)
+		if err != nil {
+			cancel()
+			t.Fatal(err)
+		}
+		if _, err = c.Write([]byte("ok")); err != nil {
+			t.Fatal(err)
+		}
+		b := make([]byte, 2)
+		if _, err = io.ReadFull(c, b); err != nil {
+			t.Fatal(err)
+		}
+		_ = c.Close()
+		cancel()
+		old := tr.inner
+		if err = tr.Reset(); err != nil {
+			t.Fatal(err)
+		}
+		if old.ctx.Err() == nil || tr.inner.ctx.Err() != nil {
+			t.Fatal("reset did not renew canceled context")
+		}
+	}
+	_ = tr.Close()
+	if err := tr.Reset(); !errors.Is(err, net.ErrClosed) {
+		t.Fatalf("reset revived permanently closed transport: %v", err)
+	}
+}
