@@ -409,7 +409,7 @@ func (c *Client) DialStreamOne(ctx context.Context) (net.Conn, error) {
 	}
 
 	conn.reader = wrc
-	if latin1Body { conn.reader = &latin1Reader{r: bufio.NewReader(wrc)} }
+	if latin1Body { conn.reader = &latin1Reader{r: bufio.NewReader(wrc), closer: wrc} }
 	conn.onClose = func() {
 		_ = pr.Close()
 		CloseTransport(transport)
