@@ -3,9 +3,7 @@ package vlessx
 import (
 	"bytes"
 	"encoding/binary"
-	"fmt"
 	"io"
-	"os"
 
 	"github.com/sagernet/sing-vmess"
 	"github.com/sagernet/sing/common"
