@@ -1,6 +1,8 @@
 package v2rayxhttp
 
 import (
+ "bufio"
+ "strings"
 	"bytes"
 	"context"
 	"errors"
@@ -372,6 +374,9 @@ func (c *Client) DialStreamOne(ctx context.Context) (net.Conn, error) {
 		return nil, err
 	}
 
+	latin1Body := strings.EqualFold(req.Header.Get("x-protocolabs-body-encoding"), "latin1")
+	if latin1Body { conn.writer = &latin1Writer{w: pw} }
+
 	wrc := NewWaitReadCloser()
 
 	go func() {
@@ -404,6 +409,7 @@ func (c *Client) DialStreamOne(ctx context.Context) (net.Conn, error) {
 	}
 
 	conn.reader = wrc
+	if latin1Body { conn.reader = &latin1Reader{r: bufio.NewReader(wrc)} }
 	conn.onClose = func() {
 		_ = pr.Close()
 		CloseTransport(transport)

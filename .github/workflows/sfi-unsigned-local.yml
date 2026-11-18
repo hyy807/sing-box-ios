@@ -54,6 +54,9 @@ jobs:
       - name: Install gomobile
         run: make lib_install
 
+      - name: Test EFAN protocol and transport
+        run: go test ./protocol/vless/vlessx ./transport/v2rayxhttp
+
       - name: Build Libbox
         env:
           GOTOOLCHAIN: local

@@ -330,6 +330,9 @@ func ReadResponse(reader io.Reader, x365 bool) error {
 		if header[0] != 'X' || header[1] != '3' || header[2] != '6' || header[3] != '5' {
 			return E.New("invalid x365 response header")
 		}
+		if header[4] != 0 {
+			return E.New("x365: server status ", header[4])
+		}
 		return nil
 	}
 	var version byte

@@ -50,6 +50,9 @@ func NewClient(userId string, flow string, logger logger.Logger) (*Client, error
 	return &Client{key: user, flow: flow, x365: x365, logger: logger}, nil
 }
 
+// SetX365 selects the EFAN frame format used by FlClash.
+func (c *Client) SetX365(enabled bool) { c.x365 = enabled }
+
 func (c *Client) prepareConn(conn net.Conn, tlsConn net.Conn) (net.Conn, error) {
 	if c.flow == FlowVision {
 		protocolConn, err := NewVisionConn(conn, tlsConn, c.key, c.logger)

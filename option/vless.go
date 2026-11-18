@@ -15,6 +15,7 @@ type VLESSUser struct {
 }
 
 type VLESSOutboundOptions struct {
+	X365 bool `json:"x365,omitempty"`
 	DialerOptions
 	ServerOptions
 	UUID    string      `json:"uuid"`
