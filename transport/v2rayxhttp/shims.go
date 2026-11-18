@@ -8,6 +8,7 @@ import (
 	"context"
 	crand "crypto/rand"
 	"fmt"
+	"io"
 	"math/rand/v2"
 	"net"
 	"net/http"
@@ -36,6 +37,10 @@ func NewAddrContext(addr *NetAddr, ctx context.Context) context.Context {
 
 // CloseTransport 关闭空闲连接
 func CloseTransport(roundTripper http.RoundTripper) {
+	if lease, ok := roundTripper.(io.Closer); ok {
+		_ = lease.Close()
+		return
+	}
 	if tr, ok := roundTripper.(interface{ CloseIdleConnections() }); ok {
 		tr.CloseIdleConnections()
 	}
@@ -50,8 +55,8 @@ func afterFunc(ctx context.Context, f func()) (stop func() bool) {
 // ---- randv2 ----
 
 func randFloat64() float64 { return rand.Float64() }
-func randUint32() uint32 { return rand.Uint32() }
-func randUint64() uint64 { return rand.Uint64() }
+func randUint32() uint32   { return rand.Uint32() }
+func randUint64() uint64   { return rand.Uint64() }
 
 // NewUUIDV4 生成 RFC4122 v4 UUID
 func NewUUIDV4() string {
